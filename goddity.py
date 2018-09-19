@@ -74,6 +74,13 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
         if self.path in STATIC_FILES:
             super().do_GET()
 
+        elif self.path == '/graph':
+            self.send_response(200)
+            self.send_header('Content-type','application/json')
+            self.end_headers()
+            s = json.dumps(self.server.graph_to_dict())
+            self.wfile.write(str.encode(s))
+
         elif self.path == '/possibilities':
             self.send_response(200)
             self.send_header('Content-type','application/json')
@@ -116,11 +123,40 @@ class Server(http.server.HTTPServer):
         self.state.step(choice)
         self.possible = self.state.heuristic()
 
+        new_state = copy.deepcopy(self.state)
+        self.graph.add_edge(self.old_states[-1], new_state, action = choice)
+        self.old_states.append(new_state)
+
+    def graph_to_dict(self):
+        nodes = [
+            {
+                'id': id(state),
+                'text': state.render_state()
+            }
+            for state in self.graph.nodes()
+        ]
+
+        edges = [
+            {
+                'source': id(u),
+                'target': id(v),
+                'action': u.render_action(data['action'])
+            }
+            for u,v,data in self.graph.edges(data=True)
+        ]
+
+        return {
+            'nodes': nodes,
+            'edges': edges,
+        }
+
 
 def run_app(state):
+    import os
 
-    PORT = 5000
-    print("hellow")
-    with Server(("", PORT), state) as httpd:
-        print("serving at port", PORT)
+    addr = os.environ.get("GODDITY_ADDR", "")
+    port = int(os.environ.get("GODDITY_PORT", 5000))
+
+    with Server((addr, port), state) as httpd:
+        print("serving at ", addr, port)
         httpd.serve_forever()
