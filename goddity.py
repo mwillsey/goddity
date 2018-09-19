@@ -1,4 +1,6 @@
 import copy
+import json
+
 import networkx as nx
 import http.server
 
@@ -46,27 +48,49 @@ def run(state):
             graph.add_edge(old_states[-1], new_state)
             old_states.append(new_state)
 
-STATIC_FILES = {
-    '/': 'index.html',
-    '/index.html': 'index.html',
-    '/main.js': 'main.js',
-}
+STATIC_FILES = ['/', '/index.html', '/main.js']
 
-class RequestHandler(http.server.BaseHTTPRequestHandler):
+class RequestHandler(http.server.SimpleHTTPRequestHandler):
+
+    def do_POST(self):
+        print('post')
+        if self.path == '/make_choice':
+            content_len = int(self.headers.get('Content-Length', 0))
+            data_string = self.rfile.read(content_len)
+            data = json.loads(data_string)
+
+            self.server.step(int(data['choice']))
+
+            self.send_response(200)
+            self.send_header('Content-type','application/json')
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok"}')
+        else:
+            self.send_response(400)
+            self.end_headers()
 
     def do_GET(self):
 
         if self.path in STATIC_FILES:
+            super().do_GET()
+
+        elif self.path == '/possibilities':
             self.send_response(200)
+            self.send_header('Content-type','application/json')
             self.end_headers()
-            with open(STATIC_FILES[self.path], 'rb') as f:
-                self.wfile.write(f.read())
-                return
+            s = json.dumps(self.server.render_choices())
+            self.wfile.write(str.encode(s))
+
+        elif self.path == '/state':
+            self.send_response(200)
+            self.send_header('Content-type','application/json')
+            self.end_headers()
+            s = json.dumps(self.server.state.render_state())
+            self.wfile.write(str.encode(s))
+
         else:
-            self.send_response(200)
-            self.send_header('Content-type', 'text/json')
+            self.send_response(400)
             self.end_headers()
-            self.wfile.write(self.server.render_choices())
 
 class Server(http.server.HTTPServer):
     def __init__(self, address, state, req_handler = RequestHandler):
@@ -82,16 +106,16 @@ class Server(http.server.HTTPServer):
         super().__init__(address, req_handler)
 
     def render_choices(self):
-        lines = []
+        return [
+            self.state.render_action(act)
+            for act in self.possible
+        ]
 
-        for i, p in enumerate(self.possible):
-            s = self.state.render_action(p)
-            lines.append('{}. {}'.format(i, s))
+    def step(self, choice_index):
+        choice = self.possible[choice_index]
+        self.state.step(choice)
+        self.possible = self.state.heuristic()
 
-        return str.encode('\n'.join(lines))
-
-    def step(self):
-        pass
 
 def run_app(state):
 

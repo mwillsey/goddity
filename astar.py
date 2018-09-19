@@ -14,16 +14,30 @@ class State(goddity.State):
         self.visited = {n: float('inf') for n in graph}
         self.visited[src] = 0
 
+        self.taken_edges = set()
+
+    def render_state(self):
+        return '\n'.join(
+            '<div>{}: {}</div>'.format(n, cost)
+            for n, cost
+            in self.visited.items()
+            if cost != float('inf')
+        )
+
     def heuristic(self):
-        return list(self.graph.out_edges(n for n, cost
-                                    in self.visited.items()
-                                    if cost != float('inf')))
+        edges = self.graph.out_edges(
+            n for n, cost
+            in self.visited.items()
+            if cost != float('inf')
+        )
+        return [e for e in edges if e not in self.taken_edges]
 
     def render_action(self, edge):
         (u,v) = edge
         return '{} -> {}'.format(u,v)
 
     def step(self, edge):
+        self.taken_edges.add(edge)
         (u,v) = edge
         assert u in self.graph
         self.visited[v] = min(self.visited[v], self.visited[u] + 1)
